@@ -1,44 +1,24 @@
 #!/usr/bin/python3
 
-# Mostly copied from https://picamera.readthedocs.io/en/release-1.13/recipes2.html
-# Run this script, then point a web browser at http:<this-ip-address>:8000
-# Note: needs simplejpeg to be installed (pip3 install simplejpeg).
-
-import io
-import logging
-import socketserver
-from http import server
-from threading import Condition
-
+import cv2
+import os
 from picamera2 import Picamera2
-from picamera2.encoders import JpegEncoder
-from picamera2.outputs import FileOutput
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingMixIn
+import threading
+import time
+import io
 
-PAGE = """\
-<html>
-<head>
-<title>picamera2 MJPEG streaming demo</title>
-</head>
-<body>
-<h1>Picamera2 MJPEG Streaming Demo</h1>
-<img src="stream.mjpg" width="640" height="480" />
-</body>
-</html>
-"""
+# Инициализируем каскадный классификатор для обнаружения лиц
+face_cascade = cv2.CascadeClassifier("/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml")
 
-
-class StreamingOutput(io.BufferedIOBase):
-    def __init__(self):
-        self.frame = None
-        self.condition = Condition()
-
-    def write(self, buf):
-        with self.condition:
-            self.frame = buf
-            self.condition.notify_all()
+# Инициализируем камеру
+picam2 = Picamera2()
+picam2.configure(picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (640, 480)}))
+picam2.start()
 
 
-class StreamingHandler(server.BaseHTTPRequestHandler):
+class VideoStreamHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/':
             self.send_response(301)
@@ -51,7 +31,7 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
             self.send_header('Content-Length', len(content))
             self.end_headers()
             self.wfile.write(content)
-        elif self.path == '/stream.mjpg':
+        elif self.path == '/video_feed':
             self.send_response(200)
             self.send_header('Age', 0)
             self.send_header('Cache-Control', 'no-cache, private')
@@ -60,37 +40,81 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
             self.end_headers()
             try:
                 while True:
-                    with output.condition:
-                        output.condition.wait()
-                        frame = output.frame
+                    frame = picam2.capture_array()
+                    frame = detect_faces(frame)
+                    ret, buffer = cv2.imencode('.jpg', frame)
+                    frame_bytes = buffer.tobytes()
                     self.wfile.write(b'--FRAME\r\n')
                     self.send_header('Content-Type', 'image/jpeg')
-                    self.send_header('Content-Length', len(frame))
+                    self.send_header('Content-Length', len(frame_bytes))
                     self.end_headers()
-                    self.wfile.write(frame)
+                    self.wfile.write(frame_bytes)
                     self.wfile.write(b'\r\n')
+                    time.sleep(0.1)
             except Exception as e:
-                logging.warning(
-                    'Removed streaming client %s: %s',
-                    self.client_address, str(e))
+                print('Exception while streaming frames: %s' % str(e))
         else:
             self.send_error(404)
             self.end_headers()
 
 
-class StreamingServer(socketserver.ThreadingMixIn, server.HTTPServer):
-    allow_reuse_address = True
-    daemon_threads = True
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    pass
 
 
-picam2 = Picamera2()
-picam2.configure(picam2.create_video_configuration(main={"size": (640, 480)}))
-output = StreamingOutput()
-picam2.start_recording(JpegEncoder(), FileOutput(output))
+def detect_faces(frame):
+    # Преобразуем изображение в оттенки серого для обнаружения лиц
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    # Обнаруживаем лица на кадре
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+    # Рисуем прямоугольные рамки вокруг обнаруженных лиц и вычисляем координаты их центров
+    for (x, y, w, h) in faces:
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        center_x = x + w // 2
+        center_y = y + h // 2
+        cv2.circle(frame, (center_x, center_y), 5, (255, 0, 0), -1)
+
+    return frame
+
+
+class StreamingServer:
+    def __init__(self, server_class=ThreadedHTTPServer, handler_class=VideoStreamHandler, port=8000):
+        self.server = server_class(('0.0.0.0', port), handler_class)
+
+    def start(self):
+        print('Starting server...')
+        self.server_thread = threading.Thread(target=self.server.serve_forever)
+        self.server_thread.daemon = True
+        self.server_thread.start()
+        print('Server started.')
+
+    def stop(self):
+        print('Stopping server...')
+        self.server.shutdown()
+        self.server.server_close()
+        print('Server stopped.')
+
+
+PAGE = """\
+<html>
+<head>
+<title>Face Detection Stream</title>
+</head>
+<body>
+<h1>Face Detection Stream</h1>
+<img src="/video_feed" width="640" height="480" />
+</body>
+</html>
+"""
 
 try:
-    address = ('', 8000)
-    server = StreamingServer(address, StreamingHandler)
-    server.serve_forever()
-finally:
-    picam2.stop_recording()
+    server = StreamingServer()
+    server.start()
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    server.stop()
+    picam2.stop()
+    cv2.destroyAllWindows()
