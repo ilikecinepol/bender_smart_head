@@ -11,7 +11,7 @@ model = vosk.Model(MODEL_PATH)
 rec = vosk.KaldiRecognizer(model, 44100)
 
 # Подключаемся к Яндекс
-account = YandexGPTLite('b1gcaab4r1ot7trjfpdt', 'y0_AgAAAAAg4ul8AATuwQAAAADkZk1fBXjBJFHFSN2tcHfFDLReXZcvNWo' )
+account = YandexGPTLite('**********', '***********' )
 
 # Функция для обработки аудио из микрофона
 def process_microphone_input():
