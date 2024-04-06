@@ -1,4 +1,4 @@
-  GNU nano 7.2                                                                                                     l.py                                                                                                               import pyaudio
+import pyaudio
 import vosk
 import json
 from yandexgptlite import YandexGPTLite
