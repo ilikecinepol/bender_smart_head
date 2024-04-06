@@ -1,12 +1,16 @@
-import pyaudio
+  GNU nano 7.2                                                                                                     l.py                                                                                                               import pyaudio
 import vosk
 import json
+from yandexgptlite import YandexGPTLite
 
 MODEL_PATH = "vosk-model-small-ru-0.22"
 
 # Инициализация модели Vosk
 model = vosk.Model(MODEL_PATH)
 rec = vosk.KaldiRecognizer(model, 44100)
+
+# Подключаемся к Яндекс
+account = YandexGPTLite('b1gcaab4r1ot7trjfpdt', 'y0_AgAAAAAg4ul8AATuwQAAAADkZk1fBXjBJFHFSN2tcHfFDLReXZcvNWo' )
 
 # Функция для обработки аудио из микрофона
 def process_microphone_input():
@@ -32,7 +36,10 @@ def process_microphone_input():
         if rec.AcceptWaveform(data):
             result = rec.Result()
             result_dict = json.loads(result)
-            print(result_dict['text'])
+            promt = result_dict['text']
+            print(promt)
+            answer = account.create_completion(promt, '0.6')
+            print(answer) #Sounds good!
 
     print("* Recording finished")
 
