@@ -2,6 +2,7 @@ import pyaudio
 import vosk
 import json
 from yandexgptlite import YandexGPTLite
+import subprocess
 
 MODEL_PATH = "vosk-model-small-ru-0.22"
 
@@ -38,8 +39,11 @@ def process_microphone_input():
             result_dict = json.loads(result)
             promt = result_dict['text']
             print(promt)
-            answer = account.create_completion(promt, '0.6')
+            answer = account.create_completion(promt, '0.6', system_prompt='Разговаривай как робот Бендер из м/ф Футурама')
             print(answer) #Sounds good!
+
+            command = 'echo %s | spd-say -o rhvoice -l ru -e -t male1' % str(answer)
+            # subprocess.run(command, shell=True)
 
     print("* Recording finished")
 
@@ -50,3 +54,4 @@ def process_microphone_input():
 # Запуск обработки аудио с микрофона
 if __name__ == "__main__":
     process_microphone_input()
+    
