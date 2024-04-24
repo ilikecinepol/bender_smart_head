@@ -1,4 +1,3 @@
-
 import cv2
 import os
 from picamera2 import Picamera2
@@ -47,8 +46,10 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
             try:
                 while True:
                     frame = picam2.capture_array()
-                    frame = detect_faces(frame)
-                    ret, buffer = cv2.imencode('.jpg', frame)
+                    # Поворачиваем изображение на 90 градусов по часовой стрелке
+                    rotated_frame = rotate_image(frame, -90)
+                    rotated_frame = detect_faces(rotated_frame)
+                    ret, buffer = cv2.imencode('.jpg', rotated_frame)
                     frame_bytes = buffer.tobytes()
                     self.wfile.write(b'--FRAME\r\n')
                     self.send_header('Content-Type', 'image/jpeg')
@@ -63,10 +64,18 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
             self.send_error(404)
             self.end_headers()
 
-
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     pass
 
+def rotate_image(image, angle):
+    # Получаем размеры изображения
+    (h, w) = image.shape[:2]
+    # Определяем центр изображения
+    center = (w // 2, h // 2)
+    # Поворачиваем изображение на заданный угол
+    M = cv2.getRotationMatrix2D(center, angle, 1.0)
+    rotated_image = cv2.warpAffine(image, M, (w, h))
+    return rotated_image
 
 def detect_faces(frame):
     # Преобразуем изображение в оттенки серого для обнаружения лиц
@@ -90,25 +99,6 @@ def detect_faces(frame):
         time.sleep(0.1)
     return frame
 
-
-class StreamingServer:
-    def __init__(self, server_class=ThreadedHTTPServer, handler_class=VideoStreamHandler, port=8000):
-        self.server = server_class(('0.0.0.0', port), handler_class)
-
-    def start(self):
-        print('Starting server...')
-        self.server_thread = threading.Thread(target=self.server.serve_forever)
-        self.server_thread.daemon = True
-        self.server_thread.start()
-        print('Server started.')
-
-    def stop(self):
-        print('Stopping server...')
-        self.server.shutdown()
-        self.server.server_close()
-        print('Server stopped.')
-
-
 PAGE = """\
 <html>
 <head>
@@ -121,19 +111,26 @@ PAGE = """\
 </html>
 """
 
-try:
-    server = StreamingServer()
-    server.start()
-    while True:
-        time.sleep(1)
-except KeyboardInterrupt:
-    server.stop()
-    picam2.stop()
-    ser.close()
-    cv2.destroyAllWindows()
+def main():
+    global server
+    global picam2
+    global ser
 
+    try:
+        server = ThreadedHTTPServer(('0.0.0.0', 8000), VideoStreamHandler)
+        server_thread = threading.Thread(target=server.serve_forever)
+        server_thread.daemon = True
+        server_thread.start()
 
+        while True:
+            time.sleep(1)
 
+    except KeyboardInterrupt:
+        server.shutdown()
+        server.server_close()
+        picam2.stop()
+        ser.close()
+        cv2.destroyAllWindows()
 
-
-
+if __name__ == '__main__':
+    main()
