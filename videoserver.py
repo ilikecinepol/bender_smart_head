@@ -13,15 +13,15 @@ face_cascade = cv2.CascadeClassifier("/usr/share/opencv4/haarcascades/haarcascad
 
 # Инициализируем камеру
 picam2 = Picamera2()
-picam2.configure(picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (640, 480)}))
+picam2.configure(picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (320, 240)}))  # Уменьшаем размер изображения
 picam2.start()
 
 # Инициализируем Serial порт
 ser = serial.Serial('/dev/ttyUSB0', 9600)
 
 # Определим центр экрана
-screen_center_x = 640 // 2
-screen_center_y = 480 // 2
+screen_center_x = 320 // 2  # Уменьшаем размер изображения
+screen_center_y = 240 // 2  # Уменьшаем размер изображения
 
 class VideoStreamHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -46,10 +46,9 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
             try:
                 while True:
                     frame = picam2.capture_array()
-                    # Поворачиваем изображение на 90 градусов по часовой стрелке
-                    rotated_frame = rotate_image(frame, -90)
-                    rotated_frame = detect_faces(rotated_frame)
-                    ret, buffer = cv2.imencode('.jpg', rotated_frame)
+                    frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)  # Поворачиваем изображение на 90 градусов
+                    frame = detect_faces(frame)
+                    ret, buffer = cv2.imencode('.jpg', frame)
                     frame_bytes = buffer.tobytes()
                     self.wfile.write(b'--FRAME\r\n')
                     self.send_header('Content-Type', 'image/jpeg')
@@ -57,25 +56,17 @@ class VideoStreamHandler(BaseHTTPRequestHandler):
                     self.end_headers()
                     self.wfile.write(frame_bytes)
                     self.wfile.write(b'\r\n')
-                    time.sleep(0.1)
+                    time.sleep(0.05)  # Уменьшаем задержку между кадрами
             except Exception as e:
                 print('Exception while streaming frames: %s' % str(e))
         else:
             self.send_error(404)
             self.end_headers()
 
+
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     pass
 
-def rotate_image(image, angle):
-    # Получаем размеры изображения
-    (h, w) = image.shape[:2]
-    # Определяем центр изображения
-    center = (w // 2, h // 2)
-    # Поворачиваем изображение на заданный угол
-    M = cv2.getRotationMatrix2D(center, angle, 1.0)
-    rotated_image = cv2.warpAffine(image, M, (w, h))
-    return rotated_image
 
 def detect_faces(frame):
     # Преобразуем изображение в оттенки серого для обнаружения лиц
@@ -96,8 +87,27 @@ def detect_faces(frame):
         # Отправляем переменные delta_x и delta_y в Serial порт
         print(delta_x, delta_y)
         ser.write(f"{delta_x},{delta_y}\n".encode())
-        time.sleep(0.1)
+        time.sleep(0.05)  # Уменьшаем задержку между отправкой координат
     return frame
+
+
+class StreamingServer:
+    def __init__(self, server_class=ThreadedHTTPServer, handler_class=VideoStreamHandler, port=8000):
+        self.server = server_class(('0.0.0.0', port), handler_class)
+
+    def start(self):
+        print('Starting server...')
+        self.server_thread = threading.Thread(target=self.server.serve_forever)
+        self.server_thread.daemon = True
+        self.server_thread.start()
+        print('Server started.')
+
+    def stop(self):
+        print('Stopping server...')
+        self.server.shutdown()
+        self.server.server_close()
+        print('Server stopped.')
+
 
 PAGE = """\
 <html>
@@ -106,31 +116,18 @@ PAGE = """\
 </head>
 <body>
 <h1>Face Detection Stream</h1>
-<img src="/video_feed" width="640" height="480" />
+<img src="/video_feed" width="320" height="240" />  <!-- Уменьшаем размер изображения -->
 </body>
 </html>
 """
 
-def main():
-    global server
-    global picam2
-    global ser
-
-    try:
-        server = ThreadedHTTPServer(('0.0.0.0', 8000), VideoStreamHandler)
-        server_thread = threading.Thread(target=server.serve_forever)
-        server_thread.daemon = True
-        server_thread.start()
-
-        while True:
-            time.sleep(1)
-
-    except KeyboardInterrupt:
-        server.shutdown()
-        server.server_close()
-        picam2.stop()
-        ser.close()
-        cv2.destroyAllWindows()
-
-if __name__ == '__main__':
-    main()
+try:
+    server = StreamingServer()
+    server.start()
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    server.stop()
+    picam2.stop()
+    ser.close()
+    cv2.destroyAllWindows()
