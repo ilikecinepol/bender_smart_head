@@ -1,4 +1,3 @@
-#!/usr/bin/python3
 
 import cv2
 import os
@@ -8,6 +7,7 @@ from socketserver import ThreadingMixIn
 import threading
 import time
 import io
+import serial
 
 # Инициализируем каскадный классификатор для обнаружения лиц
 face_cascade = cv2.CascadeClassifier("/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml")
@@ -17,6 +17,12 @@ picam2 = Picamera2()
 picam2.configure(picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (640, 480)}))
 picam2.start()
 
+# Инициализируем Serial порт
+ser = serial.Serial('/dev/ttyUSB0', 9600)
+
+# Определим центр экрана
+screen_center_x = 640 // 2
+screen_center_y = 480 // 2
 
 class VideoStreamHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -75,7 +81,13 @@ def detect_faces(frame):
         center_x = x + w // 2
         center_y = y + h // 2
         cv2.circle(frame, (center_x, center_y), 5, (255, 0, 0), -1)
-
+        # Вычисляем разницу между центром лица и центром экрана
+        delta_x = center_x - screen_center_x
+        delta_y = center_y - screen_center_y
+        # Отправляем переменные delta_x и delta_y в Serial порт
+        print(delta_x, delta_y)
+        ser.write(f"{delta_x},{delta_y}\n".encode())
+        time.sleep(0.1)
     return frame
 
 
@@ -117,4 +129,11 @@ try:
 except KeyboardInterrupt:
     server.stop()
     picam2.stop()
+    ser.close()
     cv2.destroyAllWindows()
+
+
+
+
+
+
