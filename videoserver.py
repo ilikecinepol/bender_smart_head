@@ -1,5 +1,4 @@
-import cv2
-import os
+  GNU nano 7.2                                                                                                                                                                                                                                                                                                                                                          t.py                                                                                                                                                                                                                                                                                                                                                                    import cv2
 from picamera2 import Picamera2
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
@@ -13,7 +12,7 @@ face_cascade = cv2.CascadeClassifier("/usr/share/opencv4/haarcascades/haarcascad
 
 # Инициализируем камеру
 picam2 = Picamera2()
-picam2.configure(picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (320, 240)}))  # Уменьшаем размер изображения
+picam2.configure(picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (320, 240), "stride": 320 * 3}))  # Уменьшаем размер изображения и указываем правильный ключ конфигурации
 picam2.start()
 
 # Инициализируем Serial порт
@@ -86,7 +85,10 @@ def detect_faces(frame):
         delta_y = center_y - screen_center_y
         # Отправляем переменные delta_x и delta_y в Serial порт
         print(delta_x, delta_y)
-        ser.write(f"{delta_x},{delta_y}\n".encode())
+        try:
+            ser.write(f"{delta_x},{delta_y}\n".encode())
+        except Exception as e:
+            print('error')
         time.sleep(0.05)  # Уменьшаем задержку между отправкой координат
     return frame
 
@@ -115,7 +117,7 @@ PAGE = """\
 <title>Face Detection Stream</title>
 </head>
 <body>
-<h1>Face Detection Stream</h1>
+<h1>Bender smart robot</h1>
 <img src="/video_feed" width="320" height="240" />  <!-- Уменьшаем размер изображения -->
 </body>
 </html>
@@ -131,3 +133,7 @@ except KeyboardInterrupt:
     picam2.stop()
     ser.close()
     cv2.destroyAllWindows()
+
+
+
+
