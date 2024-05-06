@@ -1,4 +1,4 @@
-  GNU nano 7.2                                                                                                                                                                                                                                                                                                                                                          t.py                                                                                                                                                                                                                                                                                                                                                                    import cv2
+import cv2
 from picamera2 import Picamera2
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
